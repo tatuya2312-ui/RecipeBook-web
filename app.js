@@ -101,8 +101,44 @@ function isDisplayable(id){
   const x=cleanId(id);
   const named=ja["item.minecraft."+x]||ja["block.minecraft."+x]||en["item.minecraft."+x]||en["block.minecraft."+x];
   if(!named||!hasAsset(x))return false;
-  const technical=new Set(["air","cave_air","void_air","water","lava","fire","soul_fire","nether_portal","end_portal","end_gateway","moving_piston","piston_head","wall_torch","redstone_wall_torch","tripwire","attached_melon_stem","attached_pumpkin_stem"]);
-  return !technical.has(x);
+
+  if(x.endsWith("_spawn_egg")||x.startsWith("infested_")||x.startsWith("test_"))return false;
+
+  const hiddenFromSurvival=new Set([
+    "air","cave_air","void_air",
+    "water","lava","fire","soul_fire",
+    "nether_portal","end_portal","end_gateway",
+    "moving_piston","piston_head",
+    "wall_torch","redstone_wall_torch",
+    "tripwire","attached_melon_stem","attached_pumpkin_stem",
+
+    "barrier",
+    "bedrock",
+    "budding_amethyst",
+    "chain_command_block",
+    "command_block",
+    "command_block_minecart",
+    "debug_stick",
+    "dirt_path",
+    "end_portal_frame",
+    "farmland",
+    "frogspawn",
+    "jigsaw",
+    "knowledge_book",
+    "light",
+    "petrified_oak_slab",
+    "player_head",
+    "reinforced_deepslate",
+    "repeating_command_block",
+    "spawner",
+    "structure_block",
+    "structure_void",
+    "suspicious_gravel",
+    "suspicious_sand",
+    "trial_spawner",
+    "vault"
+  ]);
+  return !hiddenFromSurvival.has(x);
 }
 
 function recipeRank(s){
