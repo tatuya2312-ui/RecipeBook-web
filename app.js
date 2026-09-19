@@ -7,7 +7,7 @@ const ASSET_TREE_URL="https://api.github.com/repos/Owen1212055/mc-assets/git/tre
 const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","醸造","その他"];
 
 let ja={}, en={}, summaries=[], uniqueItems=[], assetSet=new Set();
-let searchQuery="", selectedCategory="すべて";
+let searchQuery="", draftQuery="", selectedCategory="すべて";
 const recipeCache=new Map();
 const tagCache=new Map();
 const app=document.getElementById("app");
@@ -111,7 +111,9 @@ function renderHome(){
     return catOk&&qOk;
   });
   app.innerHTML=topbar("RecipeBook","Minecraft Java 26.3・非公式",false)+
-    '<main class="content"><input class="search" id="search" placeholder="日本語・英語・IDで検索" value="'+esc(searchQuery)+'">'+
+    '<main class="content"><form id="searchForm" autocomplete="off">'+
+    '<input class="search" id="search" name="q" type="search" enterkeyhint="search" placeholder="日本語・英語・IDで検索" value="'+esc(draftQuery)+'">'+
+    '</form>'+
     '<div class="chips">'+CATEGORIES.map(c=>'<button class="chip '+(c===selectedCategory?'active':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join("")+'</div>'+
     '<div class="install-hint">iPhoneではSafariの共有ボタン →「ホーム画面に追加」でアプリ風に使えます。</div>'+
     '<div class="count">'+filtered.length+'件</div><div class="list">'+filtered.map(s=>
@@ -122,16 +124,32 @@ function renderHome(){
     ).join("")+'</div></main>';
 
   const inp=document.getElementById("search");
-  inp.addEventListener("keydown",e=>{
-    if(e.key==="Enter"&&!e.isComposing){
-      e.preventDefault();
-      searchQuery=inp.value;
-      inp.blur();
-      renderHome();
-    }
+  const form=document.getElementById("searchForm");
+  let composing=false;
+  let compositionJustEndedAt=0;
+
+  inp.addEventListener("compositionstart",()=>{composing=true;});
+  inp.addEventListener("compositionend",()=>{
+    composing=false;
+    compositionJustEndedAt=Date.now();
+    draftQuery=inp.value;
   });
+  inp.addEventListener("input",()=>{draftQuery=inp.value;});
+
+  form.addEventListener("submit",e=>{
+    e.preventDefault();
+
+    // Android Japanese IMEs can emit an Enter while merely confirming conversion.
+    // Ignore that conversion-confirm Enter; the next Search/Enter performs the search.
+    if(composing || Date.now()-compositionJustEndedAt < 180) return;
+
+    draftQuery=inp.value;
+    searchQuery=draftQuery;
+    inp.blur();
+    renderHome();
+  });
+
   document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
-    searchQuery=inp.value;
     selectedCategory=b.dataset.cat;
     renderHome();
   });
