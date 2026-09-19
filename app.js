@@ -1,7 +1,10 @@
-const VERSION="26.3";
-const FALLBACK_VERSION="26.3-snapshot-10";
-const ASSET_BASE="https://assets.mcasset.cloud/"+VERSION;
-const FALLBACK_ASSET_BASE="https://assets.mcasset.cloud/"+FALLBACK_VERSION;
+const DEFAULT_VERSION="26.3";
+const KNOWN_FALLBACK_VERSIONS=["26.3","26.3-snapshot-10"];
+const MCASSET_ROOT="https://assets.mcasset.cloud";
+const VERSION_MANIFEST_URL=MCASSET_ROOT+"/manifest.json";
+const AVAILABLE_VERSIONS_URL=MCASSET_ROOT+"/versions.json";
+let VERSION=DEFAULT_VERSION;
+let DATA_BASES=[MCASSET_ROOT+"/"+DEFAULT_VERSION];
 const RENDER_BASE="https://raw.githubusercontent.com/Owen1212055/mc-assets/main/item-assets";
 const ASSET_TREE_URL="https://api.github.com/repos/Owen1212055/mc-assets/git/trees/main?recursive=1";
 const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","醸造","その他"];
@@ -19,10 +22,46 @@ function renderUrl(id){return RENDER_BASE+"/"+cleanId(id).toUpperCase()+".png";}
 function nameJa(id){const x=cleanId(id);return ja["item.minecraft."+x]||ja["block.minecraft."+x]||pretty(x);}
 function nameEn(id){const x=cleanId(id);return en["item.minecraft."+x]||en["block.minecraft."+x]||pretty(x);}
 function hasAsset(id){return assetSet.has(cleanId(id).toUpperCase()+".PNG");}
-async function fetchJson(url){const r=await fetch(url);if(!r.ok)throw new Error("HTTP "+r.status+" : "+url);return r.json();}
+async function fetchJson(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status+" : "+url);return r.json();}
+function versionSubtitle(){return "Minecraft Java "+VERSION+"・自動更新・非公式";}
+async function resolveLatestRelease(){
+  const [manifest,available]=await Promise.all([
+    fetchJson(VERSION_MANIFEST_URL).catch(()=>null),
+    fetchJson(AVAILABLE_VERSIONS_URL).catch(()=>null)
+  ]);
+
+  const availableNames=new Set(
+    Array.isArray(available&&available.versions)
+      ? available.versions.map(v=>String(v&&v.name||"")).filter(Boolean)
+      : []
+  );
+
+  const candidates=[];
+  const latest=manifest&&manifest.latest&&manifest.latest.release;
+  if(latest)candidates.push(String(latest));
+
+  if(Array.isArray(manifest&&manifest.versions)){
+    for(const v of manifest.versions){
+      if(v&&v.type==="release"&&v.id)candidates.push(String(v.id));
+    }
+  }
+
+  candidates.push(DEFAULT_VERSION);
+  for(const v of KNOWN_FALLBACK_VERSIONS)candidates.push(v);
+
+  const unique=[...new Set(candidates)];
+  const chosen=unique.find(v=>availableNames.size===0||availableNames.has(v))||DEFAULT_VERSION;
+  VERSION=chosen;
+
+  const bases=[chosen,DEFAULT_VERSION,...KNOWN_FALLBACK_VERSIONS]
+    .filter((v,i,a)=>v&&a.indexOf(v)===i)
+    .map(v=>MCASSET_ROOT+"/"+v);
+  DATA_BASES=bases;
+  return VERSION;
+}
 async function fetchJsonFromBases(relativePath){
   let lastError=null;
-  for(const base of [ASSET_BASE,FALLBACK_ASSET_BASE]){
+  for(const base of DATA_BASES){
     try{return await fetchJson(base+"/"+relativePath);}catch(e){lastError=e;}
   }
   throw lastError||new Error("Minecraft data not found");
@@ -82,7 +121,7 @@ function buildUniqueItems(){
 function topbar(title,subtitle,back){
   return '<header class="topbar">'+
     (back?'<button class="back-btn" id="backBtn">‹ 戻る</button>':'<img class="logo" src="'+renderUrl("crafting_table")+'" alt="">')+
-    '<div class="title-wrap"><div class="title">'+esc(title)+'</div><div class="subtitle">'+esc(subtitle||"Minecraft Java 26.3・非公式")+'</div></div>'+
+    '<div class="title-wrap"><div class="title">'+esc(title)+'</div><div class="subtitle">'+esc(subtitle||versionSubtitle())+'</div></div>'+
     (back?'<button class="home-btn" id="homeBtn">⌂ ホーム</button>':'')+
     '</header>';
 }
@@ -110,7 +149,7 @@ function renderHome(){
     const qOk=!q||s.jaName.toLowerCase().includes(q)||s.enName.toLowerCase().includes(q)||cleanId(s.outputGuess).toLowerCase().includes(q);
     return catOk&&qOk;
   });
-  app.innerHTML=topbar("RecipeBook","Minecraft Java 26.3・非公式",false)+
+  app.innerHTML=topbar("RecipeBook",versionSubtitle(),false)+
     '<main class="content"><form id="searchForm" autocomplete="off">'+
     '<input class="search" id="search" name="q" type="search" enterkeyhint="search" placeholder="日本語・英語・IDで検索" value="'+esc(draftQuery)+'">'+
     '</form>'+
@@ -216,12 +255,10 @@ async function resolveTag(tagRaw,depth){
   const tag=cleanId(String(tagRaw).replace(/^#/,""));
   if(tagCache.has(tag))return tagCache.get(tag);
   if(depth>5)return[tag.replace(/s$/,"")];
-  const urls=[
-    ASSET_BASE+"/data/minecraft/tags/item/"+tag+".json",
-    ASSET_BASE+"/data/minecraft/tags/block/"+tag+".json",
-    FALLBACK_ASSET_BASE+"/data/minecraft/tags/item/"+tag+".json",
-    FALLBACK_ASSET_BASE+"/data/minecraft/tags/block/"+tag+".json"
-  ];
+  const urls=DATA_BASES.flatMap(base=>[
+    base+"/data/minecraft/tags/item/"+tag+".json",
+    base+"/data/minecraft/tags/block/"+tag+".json"
+  ]);
   let out=[];
   for(const url of urls){
     try{
@@ -330,30 +367,35 @@ function renderState(state){
   else if(state.page==="recipe")renderRecipe(state.recipeId);
 }
 async function init(){
-  app.innerHTML=topbar("RecipeBook","Minecraft Java 26.3・非公式",false)+'<main class="content"><div class="loading"><div class="spinner"></div>データを読み込み中…</div></main>';
+  app.innerHTML=topbar("RecipeBook","Minecraft最新版を確認中…・非公式",false)+'<main class="content"><div class="loading"><div class="spinner"></div>最新版を確認しています…</div></main>';
   try{
-    const [stableJa,fallbackJa,stableEn,fallbackEn,stableIndex,fallbackIndex,tree]=await Promise.all([
-      fetchJson(ASSET_BASE+"/assets/minecraft/lang/ja_jp.json").catch(()=>({})),
-      fetchJson(FALLBACK_ASSET_BASE+"/assets/minecraft/lang/ja_jp.json").catch(()=>({})),
-      fetchJson(ASSET_BASE+"/assets/minecraft/lang/en_us.json").catch(()=>({})),
-      fetchJson(FALLBACK_ASSET_BASE+"/assets/minecraft/lang/en_us.json").catch(()=>({})),
-      fetchJson(ASSET_BASE+"/data/minecraft/recipe/_list.json").catch(()=>({files:[]})),
-      fetchJson(FALLBACK_ASSET_BASE+"/data/minecraft/recipe/_list.json").catch(()=>({files:[]})),
+    await resolveLatestRelease();
+
+    const [dataSets,tree]=await Promise.all([
+      Promise.all(DATA_BASES.map(async base=>({
+        ja:await fetchJson(base+"/assets/minecraft/lang/ja_jp.json").catch(()=>({})),
+        en:await fetchJson(base+"/assets/minecraft/lang/en_us.json").catch(()=>({})),
+        index:await fetchJson(base+"/data/minecraft/recipe/_list.json").catch(()=>({files:[]}))
+      }))),
       fetchJson(ASSET_TREE_URL)
     ]);
 
-    ja={...fallbackJa,...stableJa};
-    en={...fallbackEn,...stableEn};
+    ja={};
+    en={};
+    for(const data of [...dataSets].reverse()){
+      ja={...ja,...data.ja};
+      en={...en,...data.en};
+    }
+
     assetSet=new Set(
       (tree.tree||[])
         .filter(x=>x.path&&x.path.startsWith("item-assets/")&&x.path.endsWith(".png"))
         .map(x=>x.path.split("/").pop().toUpperCase())
     );
 
-    const recipeFiles=[...new Set([
-      ...(Array.isArray(stableIndex.files)?stableIndex.files:[]),
-      ...(Array.isArray(fallbackIndex.files)?fallbackIndex.files:[])
-    ])];
+    const recipeFiles=[...new Set(
+      dataSets.flatMap(data=>Array.isArray(data.index.files)?data.index.files:[])
+    )];
 
     const recipeEntries=recipeFiles
       .filter(f=>String(f).endsWith(".json"))
@@ -376,12 +418,15 @@ async function init(){
       }));
 
     summaries=[...recipeEntries,...catalogEntries];
+    recipeCache.clear();
+    tagCache.clear();
     buildUniqueItems();
     history.replaceState({page:"home"},"","#home");
     renderHome();
+
     if("serviceWorker"in navigator)navigator.serviceWorker.register("./sw.js").catch(()=>{});
   }catch(e){
-    app.innerHTML=topbar("RecipeBook","Minecraft Java 26.3・非公式",false)+'<main class="content"><div class="error">データの取得に失敗しました。<br>'+esc(e.message)+'<br><br><button class="mc-btn" onclick="location.reload()">再読み込み</button></div></main>';
+    app.innerHTML=topbar("RecipeBook",versionSubtitle(),false)+'<main class="content"><div class="error">データの取得に失敗しました。<br>'+esc(e.message)+'<br><br><button class="mc-btn" onclick="location.reload()">再読み込み</button></div></main>';
   }
 }
 init();
