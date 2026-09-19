@@ -82,7 +82,9 @@ function buildUniqueItems(){
 function topbar(title,subtitle,back){
   return '<header class="topbar">'+
     (back?'<button class="back-btn" id="backBtn">‹ 戻る</button>':'<img class="logo" src="'+renderUrl("crafting_table")+'" alt="">')+
-    '<div class="title-wrap"><div class="title">'+esc(title)+'</div><div class="subtitle">'+esc(subtitle||"Minecraft Java 26.3・非公式")+'</div></div></header>';
+    '<div class="title-wrap"><div class="title">'+esc(title)+'</div><div class="subtitle">'+esc(subtitle||"Minecraft Java 26.3・非公式")+'</div></div>'+
+    (back?'<button class="home-btn" id="homeBtn">⌂ ホーム</button>':'')+
+    '</header>';
 }
 function slot(id,sizeClass,qty,clickable){
   if(!id)return '<div class="slot '+(sizeClass||"")+'"></div>';
@@ -92,6 +94,13 @@ function slot(id,sizeClass,qty,clickable){
 }
 function navigate(state){history.pushState(state,"","#"+state.page);renderState(state);}
 function goBack(){history.back();}
+function goHome(){history.pushState({page:"home"},"","#home");renderHome();}
+function wireTopNav(){
+  const back=document.getElementById("backBtn");
+  const home=document.getElementById("homeBtn");
+  if(back)back.onclick=goBack;
+  if(home)home.onclick=goHome;
+}
 window.addEventListener("popstate",e=>renderState(e.state||{page:"home"}));
 
 function renderHome(){
@@ -163,7 +172,7 @@ async function renderItem(id){
     '<div class="section-title">'+(recipes.length?"その他の入手方法":"入手方法")+'</div>'+
     tips.map(t=>'<div class="tip"><b>•</b><div>'+esc(t)+'</div></div>').join("")+
     '<div class="footer-note">※ レシピ材料に複数候補がある場合は、代表的なアイテムを表示します。</div></main>';
-  document.getElementById("backBtn").onclick=goBack;
+  wireTopNav();
   document.querySelectorAll("[data-recipe]").forEach(b=>{
     const s=summaries.find(x=>x.recipeId===b.dataset.recipe);
     b.onclick=()=>navigate({page:"recipe",recipeId:s.recipeId});
@@ -256,7 +265,7 @@ async function renderRecipe(recipeId){
   const summary=summaries.find(s=>s.recipeId===recipeId);
   if(!summary){renderState({page:"home"});return;}
   app.innerHTML=topbar(summary.jaName,summary.enName,true)+'<main class="content"><div class="loading"><div class="spinner"></div>レシピを読み込み中…</div></main>';
-  document.getElementById("backBtn").onclick=goBack;
+  wireTopNav();
   try{
     const r=await loadRecipe(summary),isCraft=r.type==="crafting_shaped"||r.type==="crafting_shapeless";
     const ingredients=(isCraft?r.grid.filter(Boolean):r.processInputs);
@@ -276,12 +285,12 @@ async function renderRecipe(recipeId){
       panel+(r.note?'<div class="notice" style="margin-top:12px">'+esc(r.note)+'</div>':'')+
       (grouped.size?'<div class="section-title">必要なアイテム</div>'+[...grouped.values()].map(g=>{const id=primary(g.ing);return '<div class="ingredient-row" '+(id?'data-item-row="'+esc(id)+'"':'')+'>'+slot(id,"small",1,false)+'<div class="ingredient-text"><div class="ja">'+esc(nameJa(id||""))+'</div><div class="en">'+esc(nameEn(id||""))+'</div>'+(g.ing.sourceTag?'<div class="tag">選択可能: '+esc(g.ing.sourceTag)+'</div>':'')+'</div>'+(g.count>1?'<b>×'+g.count+'</b>':'')+'</div>';}).join(""):'')+
       '<div class="footer-note">レシピID: minecraft:'+esc(r.recipeId)+'<br>データ: Minecraft Java '+VERSION+'</div></main>';
-    document.getElementById("backBtn").onclick=goBack;
+    wireTopNav();
     document.querySelectorAll("[data-item]").forEach(el=>el.onclick=()=>navigate({page:"item",itemId:el.dataset.item}));
     document.querySelectorAll("[data-item-row]").forEach(el=>el.onclick=()=>navigate({page:"item",itemId:el.dataset.itemRow}));
   }catch(e){
     app.innerHTML=topbar(summary.jaName,summary.enName,true)+'<main class="content"><div class="error">このレシピを読み込めませんでした。<br>'+esc(e.message)+'</div></main>';
-    document.getElementById("backBtn").onclick=goBack;
+    wireTopNav();
   }
 }
 
