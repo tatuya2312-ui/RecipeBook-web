@@ -1,4 +1,4 @@
-const CACHE="recipebook-v5";
+const CACHE="recipebook-v6";
 const SHELL=["./","./index.html","./style.css","./app.js","./manifest.webmanifest","./icon.svg"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",e=>e.waitUntil(
