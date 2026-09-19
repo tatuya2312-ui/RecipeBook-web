@@ -1,7 +1,7 @@
 {
   "name":"RecipeBook",
   "short_name":"RecipeBook",
-  "description":"Minecraft Java 26.3 非公式レシピブック",
+  "description":"Minecraft Java 最新版対応 非公式レシピブック",
   "start_url":"./",
   "scope":"./",
   "display":"standalone",
