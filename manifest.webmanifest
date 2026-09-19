@@ -1,0 +1,13 @@
+{
+  "name":"RecipeBook",
+  "short_name":"RecipeBook",
+  "description":"Minecraft Java 26.3 非公式レシピブック",
+  "start_url":"./",
+  "scope":"./",
+  "display":"standalone",
+  "background_color":"#171717",
+  "theme_color":"#4a3223",
+  "icons":[
+    {"src":"./icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
