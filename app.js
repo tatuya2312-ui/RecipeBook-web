@@ -122,8 +122,19 @@ function renderHome(){
     ).join("")+'</div></main>';
 
   const inp=document.getElementById("search");
-  inp.addEventListener("input",e=>{searchQuery=e.target.value;renderHome();requestAnimationFrame(()=>{const n=document.getElementById("search");if(n){n.focus();n.setSelectionRange(n.value.length,n.value.length);}});});
-  document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{selectedCategory=b.dataset.cat;renderHome();});
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&!e.isComposing){
+      e.preventDefault();
+      searchQuery=inp.value;
+      inp.blur();
+      renderHome();
+    }
+  });
+  document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
+    searchQuery=inp.value;
+    selectedCategory=b.dataset.cat;
+    renderHome();
+  });
   document.querySelectorAll("[data-open-item]").forEach(b=>b.onclick=()=>navigate({page:"item",itemId:b.dataset.openItem}));
 }
 
