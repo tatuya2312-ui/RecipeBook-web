@@ -1,5 +1,7 @@
 const VERSION="26.3";
+const FALLBACK_VERSION="26.3-snapshot-10";
 const ASSET_BASE="https://assets.mcasset.cloud/"+VERSION;
+const FALLBACK_ASSET_BASE="https://assets.mcasset.cloud/"+FALLBACK_VERSION;
 const RENDER_BASE="https://raw.githubusercontent.com/Owen1212055/mc-assets/main/item-assets";
 const ASSET_TREE_URL="https://api.github.com/repos/Owen1212055/mc-assets/git/trees/main?recursive=1";
 const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","醸造","その他"];
@@ -18,6 +20,13 @@ function nameJa(id){const x=cleanId(id);return ja["item.minecraft."+x]||ja["bloc
 function nameEn(id){const x=cleanId(id);return en["item.minecraft."+x]||en["block.minecraft."+x]||pretty(x);}
 function hasAsset(id){return assetSet.has(cleanId(id).toUpperCase()+".PNG");}
 async function fetchJson(url){const r=await fetch(url);if(!r.ok)throw new Error("HTTP "+r.status+" : "+url);return r.json();}
+async function fetchJsonFromBases(relativePath){
+  let lastError=null;
+  for(const base of [ASSET_BASE,FALLBACK_ASSET_BASE]){
+    try{return await fetchJson(base+"/"+relativePath);}catch(e){lastError=e;}
+  }
+  throw lastError||new Error("Minecraft data not found");
+}
 
 function guessOutputId(recipeId){
   let id=recipeId;
@@ -35,6 +44,8 @@ function categoryOf(recipeId,output){
   const id=output.toLowerCase(),r=recipeId.toLowerCase();
   if(r.includes("smelting")||r.includes("blasting")||r.includes("smoking")||r.includes("campfire"))return"精錬・調理";
   if(r.includes("brewing")||id.includes("potion"))return"醸造";
+  if(id.includes("cushion")||id==="straw_bed")return"装飾";
+  if(id.includes("poplar")||((id.includes("wool")||id.includes("concrete"))&&(id.includes("stairs")||id.includes("slab"))))return"建築";
   if(/sword|bow|crossbow|trident|mace|spear|shield|arrow/.test(id))return"戦闘";
   if(/pickaxe|axe|shovel|hoe|shears|fishing_rod|brush|flint_and_steel|compass|clock|spyglass/.test(id))return"道具";
   if(/helmet|chestplate|leggings|boots|elytra|armor/.test(id))return"防具";
@@ -56,6 +67,7 @@ function isDisplayable(id){
 }
 
 function recipeRank(s){
+  if(s.recipeId.startsWith("__item__:"))return 3;
   if(s.recipeId===s.outputGuess)return 0;
   if(!s.recipeId.includes("_from_")&&!/smelting|blasting|smoking|campfire/.test(s.recipeId))return 1;
   return 2;
@@ -139,7 +151,7 @@ function acquisitionTips(id,hasRecipe){
 
 async function renderItem(id){
   const clean=cleanId(id);
-  const recipes=summaries.filter(s=>cleanId(s.outputGuess)===clean);
+  const recipes=summaries.filter(s=>!s.recipeId.startsWith("__item__:")&&cleanId(s.outputGuess)===clean);
   const details=await Promise.all(recipes.map(r=>loadRecipe(r).catch(()=>null)));
   const tips=acquisitionTips(clean,recipes.length>0);
   app.innerHTML=topbar(nameJa(clean),nameEn(clean),true)+
@@ -166,7 +178,12 @@ async function resolveTag(tagRaw,depth){
   const tag=cleanId(String(tagRaw).replace(/^#/,""));
   if(tagCache.has(tag))return tagCache.get(tag);
   if(depth>5)return[tag.replace(/s$/,"")];
-  const urls=[ASSET_BASE+"/data/minecraft/tags/item/"+tag+".json",ASSET_BASE+"/data/minecraft/tags/block/"+tag+".json"];
+  const urls=[
+    ASSET_BASE+"/data/minecraft/tags/item/"+tag+".json",
+    ASSET_BASE+"/data/minecraft/tags/block/"+tag+".json",
+    FALLBACK_ASSET_BASE+"/data/minecraft/tags/item/"+tag+".json",
+    FALLBACK_ASSET_BASE+"/data/minecraft/tags/block/"+tag+".json"
+  ];
   let out=[];
   for(const url of urls){
     try{
@@ -212,7 +229,7 @@ function parseOutput(raw,fallback){
 }
 async function loadRecipe(summary){
   if(recipeCache.has(summary.recipeId))return recipeCache.get(summary.recipeId);
-  const raw=await fetchJson(ASSET_BASE+"/data/minecraft/recipe/"+summary.recipeId+".json");
+  const raw=await fetchJsonFromBases("data/minecraft/recipe/"+summary.recipeId+".json");
   const type=String(raw.type||"").split(":").pop(),grid=Array(9).fill(null),processInputs=[];
   let note=null;
   if(type==="crafting_shaped"){
@@ -277,19 +294,50 @@ function renderState(state){
 async function init(){
   app.innerHTML=topbar("RecipeBook","Minecraft Java 26.3・非公式",false)+'<main class="content"><div class="loading"><div class="spinner"></div>データを読み込み中…</div></main>';
   try{
-    const [jaData,enData,index,tree]=await Promise.all([
-      fetchJson(ASSET_BASE+"/assets/minecraft/lang/ja_jp.json"),
-      fetchJson(ASSET_BASE+"/assets/minecraft/lang/en_us.json"),
-      fetchJson(ASSET_BASE+"/data/minecraft/recipe/_list.json"),
+    const [stableJa,fallbackJa,stableEn,fallbackEn,stableIndex,fallbackIndex,tree]=await Promise.all([
+      fetchJson(ASSET_BASE+"/assets/minecraft/lang/ja_jp.json").catch(()=>({})),
+      fetchJson(FALLBACK_ASSET_BASE+"/assets/minecraft/lang/ja_jp.json").catch(()=>({})),
+      fetchJson(ASSET_BASE+"/assets/minecraft/lang/en_us.json").catch(()=>({})),
+      fetchJson(FALLBACK_ASSET_BASE+"/assets/minecraft/lang/en_us.json").catch(()=>({})),
+      fetchJson(ASSET_BASE+"/data/minecraft/recipe/_list.json").catch(()=>({files:[]})),
+      fetchJson(FALLBACK_ASSET_BASE+"/data/minecraft/recipe/_list.json").catch(()=>({files:[]})),
       fetchJson(ASSET_TREE_URL)
     ]);
-    ja=jaData;en=enData;
-    assetSet=new Set((tree.tree||[]).filter(x=>x.path&&x.path.startsWith("item-assets/")&&x.path.endsWith(".png")).map(x=>x.path.split("/").pop().toUpperCase()));
-    const files=Array.isArray(index.files)?index.files:[];
-    summaries=files.filter(f=>String(f).endsWith(".json")).map(f=>{
-      const recipeId=String(f).replace(/\.json$/,""),outputGuess=guessOutputId(recipeId);
-      return{recipeId,outputGuess,jaName:nameJa(outputGuess),enName:nameEn(outputGuess),category:categoryOf(recipeId,outputGuess)};
-    }).filter(s=>isDisplayable(s.outputGuess));
+
+    ja={...fallbackJa,...stableJa};
+    en={...fallbackEn,...stableEn};
+    assetSet=new Set(
+      (tree.tree||[])
+        .filter(x=>x.path&&x.path.startsWith("item-assets/")&&x.path.endsWith(".png"))
+        .map(x=>x.path.split("/").pop().toUpperCase())
+    );
+
+    const recipeFiles=[...new Set([
+      ...(Array.isArray(stableIndex.files)?stableIndex.files:[]),
+      ...(Array.isArray(fallbackIndex.files)?fallbackIndex.files:[])
+    ])];
+
+    const recipeEntries=recipeFiles
+      .filter(f=>String(f).endsWith(".json"))
+      .map(f=>{
+        const recipeId=String(f).replace(/\.json$/,"");
+        const outputGuess=guessOutputId(recipeId);
+        return{recipeId,outputGuess,jaName:nameJa(outputGuess),enName:nameEn(outputGuess),category:categoryOf(recipeId,outputGuess)};
+      })
+      .filter(s=>isDisplayable(s.outputGuess));
+
+    const catalogEntries=[...assetSet]
+      .map(name=>name.replace(/\.PNG$/i,"").toLowerCase())
+      .filter(id=>isDisplayable(id))
+      .map(id=>({
+        recipeId:"__item__:"+id,
+        outputGuess:id,
+        jaName:nameJa(id),
+        enName:nameEn(id),
+        category:categoryOf("",id)
+      }));
+
+    summaries=[...recipeEntries,...catalogEntries];
     buildUniqueItems();
     history.replaceState({page:"home"},"","#home");
     renderHome();
