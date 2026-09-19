@@ -19,12 +19,12 @@ button{cursor:pointer}
 .title-wrap{min-width:0;flex:1}
 .title{font-size:24px;font-weight:900;letter-spacing:.2px;line-height:1.05}
 .subtitle{font-size:12px;color:#f2dfc4;margin-top:4px}
-.back-btn,.mc-btn{
+.back-btn,.home-btn,.mc-btn{
   border:2px solid #111;border-top-color:#9b9b9b;border-left-color:#9b9b9b;
   background:#545454;color:#fff;border-radius:0;padding:9px 12px;font-weight:800;
   box-shadow:inset -2px -2px 0 #2b2b2b,inset 2px 2px 0 #777
 }
-.back-btn:active,.mc-btn:active{transform:translateY(1px);box-shadow:inset 2px 2px 0 #2b2b2b}
+.back-btn:active,.home-btn:active,.mc-btn:active{transform:translateY(1px);box-shadow:inset 2px 2px 0 #2b2b2b}
 .content{max-width:920px;margin:0 auto;padding:14px}
 .search{
   width:100%;border:3px solid #777;border-radius:0;background:#222;color:#fff;
@@ -115,3 +115,6 @@ button{cursor:pointer}
   .craft-wrap{gap:10px}
   .arrow{font-size:28px}
 }
+
+.home-btn{white-space:nowrap;flex:0 0 auto}
+@media(max-width:420px){.home-btn{padding:8px 9px;font-size:13px}.back-btn{padding:8px 9px;font-size:13px}.title{font-size:19px}.subtitle{font-size:10px}}
