@@ -299,3 +299,5 @@ async function init(){
   }
 }
 init();
+
+// RecipeBook Web deployed from public repository.
