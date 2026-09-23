@@ -7,10 +7,11 @@ let VERSION=DEFAULT_VERSION;
 let DATA_BASES=[MCASSET_ROOT+"/"+DEFAULT_VERSION];
 const RENDER_BASE="https://raw.githubusercontent.com/Owen1212055/mc-assets/main/item-assets";
 const ASSET_TREE_URL="https://api.github.com/repos/Owen1212055/mc-assets/git/trees/main?recursive=1";
-const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","醸造","その他"];
+const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","ポーション","その他"];
 
 let ja={}, en={}, summaries=[], uniqueItems=[], assetSet=new Set();
 let searchQuery="", draftQuery="", selectedCategory="すべて";
+let brewingRecipeFiles=[], potionMixes=[], potionFamilies=[], potionDataLoaded=false, potionDataLoading=null;
 const recipeCache=new Map();
 const tagCache=new Map();
 const app=document.getElementById("app");
@@ -82,7 +83,7 @@ function guessOutputId(recipeId){
 function categoryOf(recipeId,output){
   const id=output.toLowerCase(),r=recipeId.toLowerCase();
   if(r.includes("smelting")||r.includes("blasting")||r.includes("smoking")||r.includes("campfire"))return"精錬・調理";
-  if(r.includes("brewing")||id.includes("potion"))return"醸造";
+  if(r.includes("brewing")||id.includes("potion"))return"ポーション";
   if(id.includes("cushion")||id==="straw_bed")return"装飾";
   if(id.includes("poplar")||((id.includes("wool")||id.includes("concrete"))&&(id.includes("stairs")||id.includes("slab"))))return"建築";
   if(/sword|bow|crossbow|trident|mace|spear|shield|arrow/.test(id))return"戦闘";
@@ -154,6 +155,257 @@ function buildUniqueItems(){
   uniqueItems.sort((a,b)=>a.jaName.localeCompare(b.jaName,"ja"));
 }
 
+
+const BASE_POTION_IDS=new Set(["water","awkward","mundane","thick"]);
+const POTION_ORDER=[
+  "night_vision","invisibility","fire_resistance","leaping","slowness","turtle_master",
+  "swiftness","water_breathing","healing","harming","poison","regeneration","strength",
+  "weakness","slow_falling","wind_charged","oozing","infested","weaving"
+];
+const POTION_FALLBACK_NAMES={
+  water:"水入り瓶",awkward:"奇妙なポーション",mundane:"ありふれたポーション",thick:"濃厚なポーション",
+  night_vision:"暗視のポーション",invisibility:"透明化のポーション",fire_resistance:"耐火のポーション",
+  leaping:"跳躍のポーション",slowness:"鈍化のポーション",turtle_master:"タートルマスターのポーション",
+  swiftness:"俊敏のポーション",water_breathing:"水中呼吸のポーション",healing:"治癒のポーション",
+  harming:"負傷のポーション",poison:"毒のポーション",regeneration:"再生のポーション",
+  strength:"力のポーション",weakness:"弱化のポーション",slow_falling:"低速落下のポーション",
+  wind_charged:"蓄風のポーション",oozing:"滲出のポーション",infested:"虫食いのポーション",weaving:"巣張りのポーション"
+};
+
+const FALLBACK_POTION_MIXES=[
+  ["water","glowstone_dust","thick"],["water","redstone","mundane"],["water","nether_wart","awkward"],
+  ["awkward","breeze_rod","wind_charged"],["awkward","slime_block","oozing"],["awkward","stone","infested"],["awkward","cobweb","weaving"],
+  ["awkward","golden_carrot","night_vision"],["night_vision","redstone","long_night_vision"],["night_vision","fermented_spider_eye","invisibility"],
+  ["long_night_vision","fermented_spider_eye","long_invisibility"],["invisibility","redstone","long_invisibility"],
+  ["awkward","magma_cream","fire_resistance"],["fire_resistance","redstone","long_fire_resistance"],
+  ["awkward","rabbit_foot","leaping"],["leaping","redstone","long_leaping"],["leaping","glowstone_dust","strong_leaping"],
+  ["leaping","fermented_spider_eye","slowness"],["long_leaping","fermented_spider_eye","long_slowness"],
+  ["slowness","redstone","long_slowness"],["slowness","glowstone_dust","strong_slowness"],
+  ["awkward","turtle_helmet","turtle_master"],["turtle_master","redstone","long_turtle_master"],["turtle_master","glowstone_dust","strong_turtle_master"],
+  ["awkward","sugar","swiftness"],["swiftness","redstone","long_swiftness"],["swiftness","glowstone_dust","strong_swiftness"],
+  ["swiftness","fermented_spider_eye","slowness"],["long_swiftness","fermented_spider_eye","long_slowness"],
+  ["awkward","pufferfish","water_breathing"],["water_breathing","redstone","long_water_breathing"],
+  ["awkward","glistering_melon_slice","healing"],["healing","glowstone_dust","strong_healing"],
+  ["healing","fermented_spider_eye","harming"],["strong_healing","fermented_spider_eye","strong_harming"],
+  ["harming","glowstone_dust","strong_harming"],["poison","fermented_spider_eye","harming"],
+  ["long_poison","fermented_spider_eye","harming"],["strong_poison","fermented_spider_eye","strong_harming"],
+  ["awkward","spider_eye","poison"],["poison","redstone","long_poison"],["poison","glowstone_dust","strong_poison"],
+  ["awkward","ghast_tear","regeneration"],["regeneration","redstone","long_regeneration"],["regeneration","glowstone_dust","strong_regeneration"],
+  ["awkward","blaze_powder","strength"],["strength","redstone","long_strength"],["strength","glowstone_dust","strong_strength"],
+  ["water","fermented_spider_eye","weakness"],["weakness","redstone","long_weakness"],
+  ["awkward","phantom_membrane","slow_falling"],["slow_falling","redstone","long_slow_falling"]
+].map(([from,reagent,to])=>({from,reagent,to,source:"fallback"}));
+
+function potionBaseId(id){
+  const x=cleanId(id);
+  if(x.startsWith("long_"))return x.slice(5);
+  if(x.startsWith("strong_"))return x.slice(7);
+  return x;
+}
+function potionVariantKind(id){
+  const x=cleanId(id);
+  return x.startsWith("long_")?"long":x.startsWith("strong_")?"strong":"normal";
+}
+function potionBaseName(id){
+  const base=potionBaseId(id);
+  const direct=ja["item.minecraft.potion.effect."+base];
+  return direct||POTION_FALLBACK_NAMES[base]||pretty(base);
+}
+function potionVariantTitle(id){
+  const base=potionBaseId(id);
+  const kind=potionVariantKind(id);
+  const direct=ja["item.minecraft.potion.effect."+cleanId(id)];
+  const baseName=direct||potionBaseName(base);
+  if(kind==="long")return baseName+"（延長）";
+  if(kind==="strong")return baseName+"（強化）";
+  return baseName;
+}
+function potionContainerTitle(container,potionId){
+  const key="item.minecraft."+container+".effect."+cleanId(potionId);
+  const direct=ja[key];
+  if(direct){
+    const kind=potionVariantKind(potionId);
+    if(kind==="long")return direct+"（延長）";
+    if(kind==="strong")return direct+"（強化）";
+    return direct;
+  }
+  const base=potionVariantTitle(potionId);
+  if(container==="splash_potion")return "スプラッシュ "+base;
+  if(container==="lingering_potion")return "残留 "+base;
+  if(container==="tipped_arrow")return base.replace("ポーション","矢");
+  return base;
+}
+function potionItemHtml(container,potionId,sizeClass=""){
+  return '<div class="potion-item">'+
+    slot(container,sizeClass,1,false)+
+    '<div class="potion-item-name">'+esc(potionContainerTitle(container,potionId))+'</div>'+
+    '</div>';
+}
+function potionSpecId(spec){
+  if(!spec||typeof spec!=="object")return null;
+  const p=spec.potion_contents||
+    (spec.components&&spec.components["minecraft:potion_contents"])||
+    (spec.components&&spec.components.potion_contents);
+  if(!p)return null;
+  return cleanId(p.potion||p.potions||p.id||"")||null;
+}
+function potionSpecItem(spec){
+  if(!spec||typeof spec!=="object")return null;
+  return cleanId(spec.item||spec.id||"")||null;
+}
+function parseBrewingJson(raw){
+  if(!raw||String(raw.type||"").split(":").pop()!=="brewing")return null;
+  const fromPotion=potionSpecId(raw.input);
+  const toPotion=potionSpecId(raw.output);
+  const reagent=potionSpecItem(raw.reagent);
+  const inputItem=potionSpecItem(raw.input)||"potion";
+  const outputItem=potionSpecItem(raw.output)||inputItem;
+  if(!fromPotion||!toPotion||!reagent)return null;
+  if(inputItem!=="potion"||outputItem!=="potion")return null;
+  return{from:fromPotion,reagent,to:toPotion,source:"data"};
+}
+function rebuildPotionFamilies(){
+  const ids=new Set();
+  for(const m of potionMixes){
+    const base=potionBaseId(m.to);
+    if(!BASE_POTION_IDS.has(base))ids.add(base);
+  }
+  potionFamilies=[...ids].sort((a,b)=>{
+    const ai=POTION_ORDER.indexOf(a),bi=POTION_ORDER.indexOf(b);
+    if(ai>=0||bi>=0)return (ai<0?999:ai)-(bi<0?999:bi);
+    return potionBaseName(a).localeCompare(potionBaseName(b),"ja");
+  });
+}
+async function loadPotionData(){
+  if(potionDataLoaded)return;
+  if(potionDataLoading)return potionDataLoading;
+  potionDataLoading=(async()=>{
+    const map=new Map();
+    for(const m of FALLBACK_POTION_MIXES)map.set(m.from+"|"+m.reagent+"|"+m.to,m);
+
+    const files=brewingRecipeFiles.slice(0,600);
+    for(let i=0;i<files.length;i+=24){
+      const chunk=files.slice(i,i+24);
+      const raws=await Promise.all(chunk.map(file=>
+        fetchJsonFromBases("data/minecraft/recipe/"+file).catch(()=>null)
+      ));
+      for(const raw of raws){
+        const m=parseBrewingJson(raw);
+        if(m)map.set(m.from+"|"+m.reagent+"|"+m.to,m);
+      }
+    }
+
+    potionMixes=[...map.values()];
+    rebuildPotionFamilies();
+    potionDataLoaded=true;
+  })().finally(()=>{potionDataLoading=null;});
+  return potionDataLoading;
+}
+function potionVariants(base){
+  const all=new Set([base]);
+  for(const m of potionMixes){
+    if(potionBaseId(m.to)===base)all.add(m.to);
+  }
+  const order={normal:0,long:1,strong:2};
+  return [...all].filter(id=>id===base||potionMixes.some(m=>m.to===id))
+    .sort((a,b)=>order[potionVariantKind(a)]-order[potionVariantKind(b)]);
+}
+function findPotionPath(target){
+  const queue=[{id:"water",path:[]}];
+  const seen=new Set(["water"]);
+  while(queue.length){
+    const cur=queue.shift();
+    if(cur.id===target)return cur.path;
+    for(const m of potionMixes){
+      if(m.from!==cur.id||seen.has(m.to))continue;
+      seen.add(m.to);
+      queue.push({id:m.to,path:cur.path.concat(m)});
+    }
+  }
+  return[];
+}
+function brewingStepHtml(step,index){
+  return '<div class="brew-card">'+
+    '<div class="brew-step-title">STEP '+(index+1)+'　'+esc(potionVariantTitle(step.to))+'</div>'+
+    '<div class="brew-diagram">'+
+      '<div class="brew-reagent"><div class="brew-label">加える材料</div>'+slot(step.reagent,"small",1,true)+'<div class="brew-small-name">'+esc(nameJa(step.reagent))+'</div></div>'+
+      '<div class="brew-machine"><img src="'+renderUrl("brewing_stand")+'" alt="醸造台"><div>醸造台</div></div>'+
+      '<div class="brew-flow">'+
+        potionItemHtml("potion",step.from,"small")+
+        '<div class="brew-arrow">➜</div>'+
+        potionItemHtml("potion",step.to,"small")+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function potionConversionHtml(target){
+  return '<div class="section-title">スプラッシュ・残留・矢まで</div>'+
+    '<div class="brew-card">'+
+      '<div class="brew-step-title">スプラッシュ化</div>'+
+      '<div class="brew-diagram">'+
+        '<div class="brew-reagent"><div class="brew-label">加える材料</div>'+slot("gunpowder","small",1,true)+'<div class="brew-small-name">'+esc(nameJa("gunpowder"))+'</div></div>'+
+        '<div class="brew-machine"><img src="'+renderUrl("brewing_stand")+'" alt="醸造台"><div>醸造台</div></div>'+
+        '<div class="brew-flow">'+potionItemHtml("potion",target,"small")+'<div class="brew-arrow">➜</div>'+potionItemHtml("splash_potion",target,"small")+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="brew-card">'+
+      '<div class="brew-step-title">残留化</div>'+
+      '<div class="brew-diagram">'+
+        '<div class="brew-reagent"><div class="brew-label">加える材料</div>'+slot("dragon_breath","small",1,true)+'<div class="brew-small-name">'+esc(nameJa("dragon_breath"))+'</div></div>'+
+        '<div class="brew-machine"><img src="'+renderUrl("brewing_stand")+'" alt="醸造台"><div>醸造台</div></div>'+
+        '<div class="brew-flow">'+potionItemHtml("splash_potion",target,"small")+'<div class="brew-arrow">➜</div>'+potionItemHtml("lingering_potion",target,"small")+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="brew-card">'+
+      '<div class="brew-step-title">効能付きの矢</div>'+
+      '<div class="arrow-craft">'+
+        '<img class="crafting-table-art" src="'+renderUrl("crafting_table")+'" alt="作業台">'+
+        '<div class="arrow-craft-text">'+
+          '<div class="arrow-craft-items">'+slot("arrow","small",8,true)+potionItemHtml("lingering_potion",target,"small")+'<div class="brew-arrow">➜</div>'+slot("tipped_arrow","small",8,false)+'</div>'+
+          '<div>作業台で中央に残留ポーション、周囲8マスに矢を置くと8本作れます。</div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+async function renderPotionDetail(potionId,variant){
+  app.innerHTML=topbar("ポーション","醸造レシピを読み込み中…",true)+'<main class="content"><div class="loading"><div class="spinner"></div>醸造レシピを読み込み中…</div></main>';
+  wireTopNav();
+  try{
+    await loadPotionData();
+    const base=potionBaseId(potionId);
+    const variants=potionVariants(base);
+    const target=variants.includes(variant)?variant:(variants.includes(base)?base:variants[0]);
+    const path=findPotionPath(target);
+    const chips=variants.map(v=>
+      '<button class="potion-variant '+(v===target?'active':'')+'" data-potion-variant="'+esc(v)+'">'+
+      esc(potionVariantKind(v)==="long"?"延長":potionVariantKind(v)==="strong"?"強化":"通常")+
+      '</button>'
+    ).join("");
+
+    app.innerHTML=topbar(potionBaseName(base),versionSubtitle(),true)+
+      '<main class="content">'+
+        '<div class="potion-hero">'+
+          '<img src="'+renderUrl("brewing_stand")+'" alt="醸造台">'+
+          '<div><h1>'+esc(potionBaseName(base))+'</h1><div class="en">醸造台レシピ</div></div>'+
+        '</div>'+
+        '<div class="potion-variants">'+chips+'</div>'+
+        '<div class="section-title">飲むポーションの作り方</div>'+
+        (path.length?path.map((s,i)=>brewingStepHtml(s,i)).join(""):'<div class="notice">このポーションの醸造経路を取得できませんでした。</div>')+
+        potionConversionHtml(target)+
+        '<div class="footer-note">※ 醸造には醸造台の燃料としてブレイズパウダーも必要です。Minecraft Java '+esc(VERSION)+' のデータを使用しています。</div>'+
+      '</main>';
+
+    wireTopNav();
+    document.querySelectorAll("[data-item]").forEach(el=>el.onclick=()=>navigate({page:"item",itemId:el.dataset.item}));
+    document.querySelectorAll("[data-potion-variant]").forEach(el=>el.onclick=()=>{
+      navigate({page:"potion",potionId:base,variant:el.dataset.potionVariant});
+    });
+  }catch(e){
+    app.innerHTML=topbar("ポーション",versionSubtitle(),true)+'<main class="content"><div class="error">ポーションデータを読み込めませんでした。<br>'+esc(e.message)+'</div></main>';
+    wireTopNav();
+  }
+}
+
 function topbar(title,subtitle,back){
   return '<header class="topbar">'+
     (back?'<button class="back-btn" id="backBtn">‹ 戻る</button>':'<img class="logo" src="'+renderUrl("crafting_table")+'" alt="">')+
@@ -180,23 +432,45 @@ window.addEventListener("popstate",e=>renderState(e.state||{page:"home"}));
 
 function renderHome(){
   const q=searchQuery.trim().toLowerCase();
-  const filtered=uniqueItems.filter(s=>{
-    const catOk=selectedCategory==="すべて"||s.category===selectedCategory;
-    const qOk=!q||s.jaName.toLowerCase().includes(q)||s.enName.toLowerCase().includes(q)||cleanId(s.outputGuess).toLowerCase().includes(q);
-    return catOk&&qOk;
-  });
+  const potionMode=selectedCategory==="ポーション";
+
+  const filtered=potionMode
+    ? (potionDataLoaded?potionFamilies.filter(id=>{
+        const jaName=potionBaseName(id).toLowerCase();
+        const enName=String(en["item.minecraft.potion.effect."+id]||pretty(id)).toLowerCase();
+        return !q||jaName.includes(q)||enName.includes(q)||id.includes(q);
+      }):[])
+    : uniqueItems.filter(s=>{
+        const catOk=selectedCategory==="すべて"||s.category===selectedCategory;
+        const qOk=!q||s.jaName.toLowerCase().includes(q)||s.enName.toLowerCase().includes(q)||cleanId(s.outputGuess).toLowerCase().includes(q);
+        return catOk&&qOk;
+      });
+
+  const rows=potionMode
+    ? filtered.map(id=>
+        '<button class="item-row potion-row" data-open-potion="'+esc(id)+'">'+
+          slot("potion","small",1,false)+
+          '<div class="item-main"><div class="item-ja">'+esc(potionBaseName(id))+'</div>'+
+          '<div class="item-en">通常・延長・強化／スプラッシュ・残留・矢</div>'+
+          '<div class="meta"><span class="badge">ポーション</span><span class="id">'+esc(id)+'</span></div></div><div class="chev">›</div>'+
+        '</button>'
+      ).join("")
+    : filtered.map(s=>
+        '<button class="item-row" data-open-item="'+esc(cleanId(s.outputGuess))+'">'+
+        slot(s.outputGuess,"small",1,false)+
+        '<div class="item-main"><div class="item-ja">'+esc(s.jaName)+'</div><div class="item-en">'+esc(s.enName)+'</div>'+
+        '<div class="meta"><span class="badge">'+esc(s.category)+'</span><span class="id">'+esc(cleanId(s.outputGuess))+'</span></div></div><div class="chev">›</div></button>'
+      ).join("");
+
   app.innerHTML=topbar("RecipeBook",versionSubtitle(),false)+
     '<main class="content"><form id="searchForm" autocomplete="off">'+
-    '<input class="search" id="search" name="q" type="search" enterkeyhint="search" placeholder="日本語・英語・IDで検索" value="'+esc(draftQuery)+'">'+
+    '<input class="search" id="search" name="q" type="search" enterkeyhint="search" placeholder="'+(potionMode?'ポーション名で検索':'日本語・英語・IDで検索')+'" value="'+esc(draftQuery)+'">'+
     '</form>'+
     '<div class="chips">'+CATEGORIES.map(c=>'<button class="chip '+(c===selectedCategory?'active':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join("")+'</div>'+
+    (potionMode?'<div class="potion-category-head"><img src="'+renderUrl("brewing_stand")+'" alt="醸造台"><div><b>ポーション</b><span>醸造台での作り方から、スプラッシュ・残留・効能付きの矢まで表示します。</span></div></div>':'')+
     '<div class="install-hint">iPhoneではSafariの共有ボタン →「ホーム画面に追加」でアプリ風に使えます。</div>'+
-    '<div class="count">'+filtered.length+'件</div><div class="list">'+filtered.map(s=>
-      '<button class="item-row" data-open-item="'+esc(cleanId(s.outputGuess))+'">'+
-      slot(s.outputGuess,"small",1,false)+
-      '<div class="item-main"><div class="item-ja">'+esc(s.jaName)+'</div><div class="item-en">'+esc(s.enName)+'</div>'+
-      '<div class="meta"><span class="badge">'+esc(s.category)+'</span><span class="id">'+esc(cleanId(s.outputGuess))+'</span></div></div><div class="chev">›</div></button>'
-    ).join("")+'</div></main>';
+    '<div class="count">'+(potionMode&&!potionDataLoaded?'ポーションデータを読み込み中…':filtered.length+'件')+'</div>'+
+    '<div class="list">'+(potionMode&&!potionDataLoaded?'<div class="loading"><div class="spinner"></div>醸造レシピを読み込み中…</div>':rows)+'</div></main>';
 
   const inp=document.getElementById("search");
   const form=document.getElementById("searchForm");
@@ -213,11 +487,7 @@ function renderHome(){
 
   form.addEventListener("submit",e=>{
     e.preventDefault();
-
-    // Android Japanese IMEs can emit an Enter while merely confirming conversion.
-    // Ignore that conversion-confirm Enter; the next Search/Enter performs the search.
     if(composing || Date.now()-compositionJustEndedAt < 180) return;
-
     draftQuery=inp.value;
     searchQuery=draftQuery;
     inp.blur();
@@ -226,9 +496,20 @@ function renderHome(){
 
   document.querySelectorAll("[data-cat]").forEach(b=>b.onclick=()=>{
     selectedCategory=b.dataset.cat;
+    searchQuery="";
+    draftQuery="";
     renderHome();
   });
   document.querySelectorAll("[data-open-item]").forEach(b=>b.onclick=()=>navigate({page:"item",itemId:b.dataset.openItem}));
+  document.querySelectorAll("[data-open-potion]").forEach(b=>b.onclick=()=>navigate({page:"potion",potionId:b.dataset.openPotion}));
+
+  if(potionMode&&!potionDataLoaded&&!potionDataLoading){
+    loadPotionData().then(()=>{
+      if(selectedCategory==="ポーション")renderHome();
+    }).catch(()=>{
+      if(selectedCategory==="ポーション")renderHome();
+    });
+  }
 }
 
 function acquisitionTips(id,hasRecipe){
@@ -401,6 +682,7 @@ function renderState(state){
   if(state.page==="home")renderHome();
   else if(state.page==="item")renderItem(state.itemId);
   else if(state.page==="recipe")renderRecipe(state.recipeId);
+  else if(state.page==="potion")renderPotionDetail(state.potionId,state.variant);
 }
 async function init(){
   app.innerHTML=topbar("RecipeBook","Minecraft最新版を確認中…・非公式",false)+'<main class="content"><div class="loading"><div class="spinner"></div>最新版を確認しています…</div></main>';
@@ -432,6 +714,11 @@ async function init(){
     const recipeFiles=[...new Set(
       dataSets.flatMap(data=>Array.isArray(data.index.files)?data.index.files:[])
     )];
+    brewingRecipeFiles=recipeFiles.filter(f=>String(f).startsWith("brewing/")&&String(f).endsWith(".json"));
+    potionDataLoaded=false;
+    potionDataLoading=null;
+    potionMixes=[];
+    potionFamilies=[];
 
     const recipeEntries=recipeFiles
       .filter(f=>String(f).endsWith(".json"))
