@@ -118,3 +118,66 @@ button{cursor:pointer}
 
 .home-btn{white-space:nowrap;flex:0 0 auto}
 @media(max-width:420px){.home-btn{padding:8px 9px;font-size:13px}.back-btn{padding:8px 9px;font-size:13px}.title{font-size:19px}.subtitle{font-size:10px}}
+
+
+/* Potion / brewing section */
+.potion-category-head{
+  display:flex;align-items:center;gap:12px;margin:8px 0 2px;padding:12px;
+  background:#2b2723;border:2px solid #5c5148
+}
+.potion-category-head img{width:58px;height:58px;object-fit:contain;image-rendering:pixelated}
+.potion-category-head b{display:block;font-size:20px}
+.potion-category-head span{display:block;margin-top:3px;font-size:13px;color:#d0cbc6;line-height:1.4}
+.potion-row .slot img{image-rendering:pixelated}
+.potion-hero{display:flex;align-items:center;gap:14px;padding:8px 0 12px}
+.potion-hero img{width:82px;height:82px;object-fit:contain;image-rendering:pixelated}
+.potion-hero h1{margin:0;font-size:24px}
+.potion-hero .en{margin-top:4px;color:#ccc}
+.potion-variants{display:flex;gap:7px;overflow:auto;padding:0 0 10px}
+.potion-variant{
+  border:2px solid #858585;border-radius:0;background:#383838;color:#eee;
+  padding:9px 15px;font-weight:900;white-space:nowrap
+}
+.potion-variant.active{background:#35572a;border-color:#b7d697;color:#fff}
+.brew-card{
+  margin:0 0 12px;padding:12px;background:#292929;border:2px solid #505050;
+  box-shadow:inset 1px 1px 0 #666
+}
+.brew-step-title{font-size:17px;font-weight:900;margin-bottom:9px}
+.brew-diagram{
+  display:grid;grid-template-columns:92px 90px 1fr;align-items:center;gap:10px;
+  min-height:118px
+}
+.brew-reagent{text-align:center}
+.brew-reagent .slot{margin:4px auto}
+.brew-label{font-size:11px;color:#bbb;font-weight:800}
+.brew-small-name{font-size:11px;color:#ddd;line-height:1.25;margin-top:3px}
+.brew-machine{text-align:center;font-size:12px;color:#ccc;font-weight:800}
+.brew-machine img{display:block;width:76px;height:76px;object-fit:contain;margin:0 auto 3px;image-rendering:pixelated}
+.brew-flow{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0}
+.brew-arrow{font-size:28px;font-weight:900;color:#bbb;flex:0 0 auto}
+.potion-item{display:flex;flex-direction:column;align-items:center;min-width:76px;max-width:120px}
+.potion-item .slot{margin:0 auto}
+.potion-item-name{font-size:11px;font-weight:800;line-height:1.25;text-align:center;margin-top:4px}
+.arrow-craft{display:flex;gap:14px;align-items:center}
+.crafting-table-art{width:76px;height:76px;object-fit:contain;image-rendering:pixelated;flex:0 0 auto}
+.arrow-craft-text{min-width:0;flex:1;font-size:13px;color:#ddd;line-height:1.45}
+.arrow-craft-items{display:flex;align-items:center;gap:8px;margin-bottom:8px;overflow:auto;padding-bottom:2px}
+@media(max-width:560px){
+  .brew-diagram{grid-template-columns:72px 72px 1fr;gap:5px}
+  .brew-machine img{width:62px;height:62px}
+  .brew-flow{gap:4px}
+  .potion-item{min-width:62px}
+  .potion-item-name{font-size:10px}
+  .brew-arrow{font-size:22px}
+}
+@media(max-width:420px){
+  .brew-card{padding:9px}
+  .brew-diagram{grid-template-columns:64px 62px minmax(0,1fr)}
+  .brew-machine img{width:54px;height:54px}
+  .potion-item{min-width:54px}
+  .potion-item .slot.small{width:42px;height:42px}
+  .brew-reagent .slot.small{width:42px;height:42px}
+  .arrow-craft{align-items:flex-start}
+  .crafting-table-art{width:58px;height:58px}
+}
