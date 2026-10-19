@@ -7,7 +7,21 @@ let VERSION=DEFAULT_VERSION;
 let DATA_BASES=[MCASSET_ROOT+"/"+DEFAULT_VERSION];
 const RENDER_BASE="https://raw.githubusercontent.com/Owen1212055/mc-assets/main/item-assets";
 const ASSET_TREE_URL="https://api.github.com/repos/Owen1212055/mc-assets/git/trees/main?recursive=1";
-const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","ポーション","その他"];
+const CATEGORIES=["すべて","建築","装飾","レッドストーン","道具","戦闘","防具","食料","素材","移動","精錬・調理","ポーション","EliteMobs","その他"];
+
+const ELITEMOBS_RECIPES=[
+  {
+    eliteId:"peace_banner",
+    recipeId:"elitemobs:peace_banner",
+    outputGuess:"blue_banner",
+    jaName:"平和の旗",
+    enName:"Peace Banner",
+    category:"EliteMobs",
+    grid:["bone","bone","bone","bone","white_banner","bone","bone","bone","bone"],
+    outputCount:1
+  }
+];
+// Only official confirmed crafting recipes; loot and quest rewards are not craftable recipes.
 
 let ja={}, en={}, summaries=[], uniqueItems=[], assetSet=new Set();
 let searchQuery="", draftQuery="", selectedCategory="すべて";
@@ -433,6 +447,8 @@ window.addEventListener("popstate",e=>renderState(e.state||{page:"home"}));
 function renderHome(){
   const q=searchQuery.trim().toLowerCase();
   const potionMode=selectedCategory==="ポーション";
+  const eliteMode=selectedCategory==="EliteMobs";
+  const catalog=[...uniqueItems,...ELITEMOBS_RECIPES];
 
   const filtered=potionMode
     ? (potionDataLoaded?potionFamilies.filter(id=>{
@@ -440,9 +456,9 @@ function renderHome(){
         const enName=String(en["item.minecraft.potion.effect."+id]||pretty(id)).toLowerCase();
         return !q||jaName.includes(q)||enName.includes(q)||id.includes(q);
       }):[])
-    : uniqueItems.filter(s=>{
+    : catalog.filter(s=>{
         const catOk=selectedCategory==="すべて"||s.category===selectedCategory;
-        const qOk=!q||s.jaName.toLowerCase().includes(q)||s.enName.toLowerCase().includes(q)||cleanId(s.outputGuess).toLowerCase().includes(q);
+        const qOk=!q||s.jaName.toLowerCase().includes(q)||s.enName.toLowerCase().includes(q)||cleanId(s.outputGuess).toLowerCase().includes(q)||String(s.eliteId||"").includes(q)||String(s.recipeId||"").toLowerCase().includes(q);
         return catOk&&qOk;
       });
 
@@ -456,10 +472,10 @@ function renderHome(){
         '</button>'
       ).join("")
     : filtered.map(s=>
-        '<button class="item-row" data-open-item="'+esc(cleanId(s.outputGuess))+'">'+
+        '<button class="item-row" '+(s.eliteId?'data-open-elite="'+esc(s.eliteId)+'"':'data-open-item="'+esc(cleanId(s.outputGuess))+'"')+'>'+
         slot(s.outputGuess,"small",1,false)+
         '<div class="item-main"><div class="item-ja">'+esc(s.jaName)+'</div><div class="item-en">'+esc(s.enName)+'</div>'+
-        '<div class="meta"><span class="badge">'+esc(s.category)+'</span><span class="id">'+esc(cleanId(s.outputGuess))+'</span></div></div><div class="chev">›</div></button>'
+        '<div class="meta"><span class="badge">'+esc(s.category)+'</span><span class="id">'+esc(s.eliteId?s.recipeId:cleanId(s.outputGuess))+'</span></div></div><div class="chev">›</div></button>'
       ).join("");
 
   app.innerHTML=topbar("RecipeBook",versionSubtitle(),false)+
@@ -468,6 +484,7 @@ function renderHome(){
     '</form>'+
     '<div class="chips">'+CATEGORIES.map(c=>'<button class="chip '+(c===selectedCategory?'active':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join("")+'</div>'+
     (potionMode?'<div class="potion-category-head"><img src="'+renderUrl("brewing_stand")+'" alt="醸造台"><div><b>ポーション</b><span>醸造台での作り方から、スプラッシュ・残留・効能付きの矢まで表示します。</span></div></div>':'')+
+    (eliteMode?'<div class="notice">EliteMobs公式のクラフトレシピのみ掲載しています。ほかの装備は主にボスドロップ・クエスト・ショップで入手します。レシピは標準設定に基づきます。</div>':'')+
     '<div class="install-hint">iPhoneではSafariの共有ボタン →「ホーム画面に追加」でアプリ風に使えます。</div>'+
     '<div class="count">'+(potionMode&&!potionDataLoaded?'ポーションデータを読み込み中…':filtered.length+'件')+'</div>'+
     '<div class="list">'+(potionMode&&!potionDataLoaded?'<div class="loading"><div class="spinner"></div>醸造レシピを読み込み中…</div>':rows)+'</div></main>';
@@ -501,6 +518,7 @@ function renderHome(){
     renderHome();
   });
   document.querySelectorAll("[data-open-item]").forEach(b=>b.onclick=()=>navigate({page:"item",itemId:b.dataset.openItem}));
+  document.querySelectorAll("[data-open-elite]").forEach(b=>b.onclick=()=>navigate({page:"elite",eliteId:b.dataset.openElite}));
   document.querySelectorAll("[data-open-potion]").forEach(b=>b.onclick=()=>navigate({page:"potion",potionId:b.dataset.openPotion}));
 
   if(potionMode&&!potionDataLoaded&&!potionDataLoading){
@@ -562,6 +580,34 @@ async function renderItem(id){
     const s=summaries.find(x=>x.recipeId===b.dataset.recipe);
     b.onclick=()=>navigate({page:"recipe",recipeId:s.recipeId});
   });
+}
+
+
+function renderEliteRecipeDetail(id){
+  const info=ELITEMOBS_RECIPES.find(x=>x.eliteId===id);
+  if(!info){renderHome();return;}
+  app.innerHTML=topbar(info.jaName,info.enName,true)+
+    '<main class="content">'+
+    '<div class="hero">'+slot(info.outputGuess,"large",info.outputCount,false)+
+    '<div><h1>'+esc(info.jaName)+'</h1><div class="en">'+esc(info.enName)+'</div>'+
+    '<div class="badge" style="display:inline-block;margin-top:6px">EliteMobs / 作業台</div></div></div>'+
+    '<div class="panel"><div class="panel-title">クラフトレシピ（3×3）</div>'+
+    '<div class="craft-wrap"><div class="grid3">'+info.grid.map(x=>slot(x,"",1,true)).join("")+'</div>'+
+    '<div class="arrow">➜</div>'+slot(info.outputGuess,"large",info.outputCount,false)+'</div></div>'+
+    '<div class="section-title">必要なアイテム</div>'+
+    '<div class="ingredient-row" data-item-row="bone">'+slot("bone","small",1,false)+
+    '<div class="ingredient-text"><div class="ja">骨</div><div class="en">Bone</div></div><b>×8</b></div>'+
+    '<div class="ingredient-row" data-item-row="white_banner">'+slot("white_banner","small",1,false)+
+    '<div class="ingredient-text"><div class="ja">旗（何色でも可）</div><div class="en">Any Banner / 全16色対応</div></div><b>×1</b></div>'+
+    '<div class="section-title">効果と注意事項</div>'+
+    '<div class="tip"><b>•</b><div>設置すると、標準設定では周囲4チャンク以内の通常のエリートMob自然発生を抑制します。</div></div>'+
+    '<div class="tip"><b>•</b><div>EliteMobs 10.1.0以降の機能です。サーバー管理者が無効化したり、レシピを変更している場合は異なります。</div></div>'+
+    '<div class="tip"><b>•</b><div>完成品の画像は参考の青い旗です。実際には専用の名前・模様・識別情報を持つ「平和の旗」ができます。</div></div>'+
+    '<div class="footer-note">レシピID: '+esc(info.recipeId)+'<br>出典: <a href="https://wiki.nightbreak.io/EliteMobs/peace_banner/" target="_blank" rel="noopener noreferrer">EliteMobs公式Wiki（Peace Banner）</a></div>'+
+    '</main>';
+  wireTopNav();
+  document.querySelectorAll("[data-item]").forEach(el=>el.onclick=()=>navigate({page:"item",itemId:el.dataset.item}));
+  document.querySelectorAll("[data-item-row]").forEach(el=>el.onclick=()=>navigate({page:"item",itemId:el.dataset.itemRow}));
 }
 
 function methodName(type){
@@ -683,6 +729,7 @@ function renderState(state){
   else if(state.page==="item")renderItem(state.itemId);
   else if(state.page==="recipe")renderRecipe(state.recipeId);
   else if(state.page==="potion")renderPotionDetail(state.potionId,state.variant);
+  else if(state.page==="elite")renderEliteRecipeDetail(state.eliteId);
 }
 async function init(){
   app.innerHTML=topbar("RecipeBook","Minecraft最新版を確認中…・非公式",false)+'<main class="content"><div class="loading"><div class="spinner"></div>最新版を確認しています…</div></main>';
